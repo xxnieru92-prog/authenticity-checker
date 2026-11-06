@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Check documents and images for signs of editing or AI generation, and issue and verify signed document credentials.">
+<title>Authenticity Checker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a verification desk. Narrow intake column on the left, the evidence report on the right; stacks on phones. */
+:root{
+  --bg:#EDEFEA; --surface:#FAFBF8; --sunk:#E3E7E1; --ink:#17201C; --muted:#56635D; --line:#D3D9D2;
+  --accent:#1D584E; --accent-ink:#FFFFFF; --accent-soft:#D9E8E3;
+  --good:#24744A; --good-soft:#DCEFE3; --warn:#9C5F0C; --warn-soft:#F5E8CF; --risk:#AD2820; --risk-soft:#F5DCD8; --info:#36628C; --info-soft:#DEE7F1;
+  --f-display:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --f-body:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1311; --surface:#151B19; --sunk:#1B2320; --ink:#E3E9E5; --muted:#95A29B; --line:#27302C;
+    --accent:#6DB9A9; --accent-ink:#0A1210; --accent-soft:#1B2D29;
+    --good:#61C389; --good-soft:#142819; --warn:#E2A84D; --warn-soft:#2D2313; --risk:#F0796F; --risk-soft:#321916; --info:#88B3DF; --info-soft:#16222E;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1311; --surface:#151B19; --sunk:#1B2320; --ink:#E3E9E5; --muted:#95A29B; --line:#27302C;
+  --accent:#6DB9A9; --accent-ink:#0A1210; --accent-soft:#1B2D29;
+  --good:#61C389; --good-soft:#142819; --warn:#E2A84D; --warn-soft:#2D2313; --risk:#F0796F; --risk-soft:#321916; --info:#88B3DF; --info-soft:#16222E;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0}
+[hidden]{display:none!important}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.gutter{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1140px;margin:0 auto}
+header.top{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:12px 28px;padding-block:14px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand svg{flex:none}
+.brand h1{font-family:var(--f-display);font-weight:800;font-size:19px;letter-spacing:-.01em;margin:0}
+.brand small{display:block;color:var(--muted);font-size:12.5px;font-weight:500;letter-spacing:0}
+nav.tabs{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav.tabs a{font-weight:600;font-size:14px;color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:8px}
+nav.tabs a:hover{color:var(--ink);background:var(--sunk)}
+nav.tabs a[aria-current="page"]{color:var(--accent-ink);background:var(--accent)}
+nav.tabs a:focus-visible,button:focus-visible,textarea:focus-visible,input:focus-visible,.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+main .wrap{padding-block:28px 56px}
+.view{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:860px){.view{grid-template-columns:minmax(0,1fr)}}
+.intake{display:flex;flex-direction:column;gap:18px;min-width:0}
+.eyebrow{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0}
+h2{font-family:var(--f-display);font-weight:700;font-size:26px;line-height:1.15;letter-spacing:-.015em;margin:4px 0 6px;text-wrap:balance}
+.lede{color:var(--muted);margin:0;max-width:60ch}
+.drop{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+  border:1.5px dashed var(--line);border-radius:var(--r);background:var(--surface);padding:26px 16px;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.drop strong{font-size:15px}
+.drop span{color:var(--muted);font-size:13px}
+.samples{display:flex;flex-direction:column;gap:8px}
+.samples .row{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-weight:600;font-size:13.5px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.primary:hover{filter:brightness(1.08)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.legend{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--muted)}
+.legend p{margin:0}
+.legend b{color:var(--ink);font-weight:600}
+label.field{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:13.5px}
+input[type=text],textarea{font:inherit;font-weight:400;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%;min-width:0}
+textarea{font-family:var(--f-mono);font-size:12px;line-height:1.45;resize:vertical;min-height:150px}
+.keybox{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+.keybox .fp{font-family:var(--f-mono);font-size:13px;letter-spacing:.02em;word-break:break-all}
+.keybox .row{display:flex;gap:8px;flex-wrap:wrap}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.chosen{font-size:13px;color:var(--muted);margin:-8px 0 0;word-break:break-all}
+
+/* Report */
+.report{background:var(--surface);border:1px solid var(--line);border-radius:14px;min-width:0;overflow:hidden}
+.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 16px;padding:22px 24px;border-bottom:1px solid var(--line);align-items:center}
+.verdict .seal{grid-row:span 2;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;border:2px solid currentColor}
+.verdict .vname{font-family:var(--f-display);font-weight:800;font-size:24px;letter-spacing:-.01em;line-height:1.1;margin:0}
+.verdict .vwhy{margin:0;color:var(--muted);max-width:62ch}
+.v-verified{background:var(--good-soft)} .v-verified .seal,.v-verified .vname{color:var(--good)}
+.v-clear{background:var(--info-soft)} .v-clear .seal,.v-clear .vname{color:var(--info)}
+.v-review{background:var(--warn-soft)} .v-review .seal,.v-review .vname{color:var(--warn)}
+.v-bad{background:var(--risk-soft)} .v-bad .seal,.v-bad .vname{color:var(--risk)}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted);vertical-align:middle;margin-left:8px;font-weight:500}
+.counts{display:flex;gap:6px;flex-wrap:wrap;grid-column:2;margin-top:6px}
+.facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 18px;margin:0;padding:18px 24px;border-bottom:1px solid var(--line);font-size:14px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.mono{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.layer{padding:18px 24px;border-bottom:1px solid var(--line)}
+.layer:last-child{border-bottom:0}
+.layer h3{font-family:var(--f-display);font-size:15px;font-weight:700;margin:0 0 2px;letter-spacing:0}
+.layer .sub{font-size:12.5px;color:var(--muted);margin:0 0 12px}
+ul.findings{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.f{display:grid;grid-template-columns:86px minmax(0,1fr);gap:12px;align-items:start}
+.pill{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;text-align:center;border-radius:6px;padding:3px 0;margin-top:1px}
+.p-pass{color:var(--good);background:var(--good-soft)} .p-info{color:var(--info);background:var(--info-soft)}
+.p-warn{color:var(--warn);background:var(--warn-soft)} .p-risk{color:var(--risk);background:var(--risk-soft)}
+.f strong{font-weight:600;display:block}
+.f p{margin:2px 0 0;color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}
+.f code{font-family:var(--f-mono);font-size:12px;background:var(--sunk);padding:1px 5px;border-radius:4px}
+.ela{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px}
+.ela figure{margin:0;display:flex;flex-direction:column;gap:6px}
+.ela canvas,.ela img{width:100%;height:auto;border-radius:8px;border:1px solid var(--line);background:#000;max-width:100%}
+.ela figcaption{font-size:12.5px;color:var(--muted)}
+.notchecked{margin:0;padding-left:18px;color:var(--muted);font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.empty{padding:40px 24px;color:var(--muted);text-align:center}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-2px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}.drop{transition:none}}
+.trusted{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.trusted li{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:13px}
+.trusted li span{min-width:0;overflow-wrap:anywhere}
+.trusted button{padding:4px 8px;font-size:12px}
+.copyrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.toast{font-size:12.5px;color:var(--good)}
+footer{color:var(--muted);font-size:12.5px;padding-block:0 32px}
+@media (max-width:520px){
+  .verdict{padding:18px 16px;grid-template-columns:minmax(0,1fr)} .verdict .seal{display:none} .counts{grid-column:1}
+  .facts,.layer{padding-left:16px;padding-right:16px} .facts{grid-template-columns:minmax(0,1fr);gap:0 0} .facts dd{margin-bottom:8px}
+  .f{grid-template-columns:minmax(0,1fr);gap:4px} .pill{justify-self:start;padding:2px 8px}
+  h2{font-size:22px}
+}
+</style>
+</head>
+<body>
+<header class="top gutter">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="15.5" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="17" cy="17" r="11" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 2"/><path d="M11.5 17.5l3.6 3.6 7.4-8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h1>Authenticity Checker<small>Evidence report for documents and images</small></h1>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#check" data-view="check">Check a file</a>
+      <a href="#issue" data-view="issue">Issue credential</a>
+      <a href="#verify" data-view="verify">Verify credential</a>
+    </nav>
+  </div>
+</header>
+
+<main class="gutter"><div class="wrap">
+
+<section id="v-check" class="view" data-for="check">
+  <div class="intake">
+    <div>
+      <p class="eyebrow">Forensic check</p>
+      <h2>What can this file tell us about where it came from?</h2>
+      <p class="lede">PDFs, Word, Excel and PowerPoint files, and images. Files are read in your browser and never uploaded.</p>
+    </div>
+    <label class="drop" id="drop-check">
+      <input type="file" id="file-check" aria-label="Choose a file to check">
+      <strong>Drop a file or click to choose</strong>
+      <span>PDF, DOCX, XLSX, PPTX, JPG, PNG, WEBP</span>
+    </label>
+    <div class="samples">
+      <p class="eyebrow">Or try a sample</p>
+      <div class="row">
+        <button type="button" id="s-pdf">Edited contract (PDF)</button>
+        <button type="button" id="s-png">AI-made ID photo (PNG)</button>
+        <button type="button" id="s-docx">Changed offer letter (DOCX)</button>
+      </div>
+    </div>
+    <div class="legend">
+      <p><b>How it decides.</b> Each check returns Pass, Info, Warning or Risk.</p>
+      <p><b>Likely manipulated:</b> at least one Risk, such as an AI-generator marker.</p>
+      <p><b>Needs review:</b> one or more Warnings, such as edits after creation.</p>
+      <p><b>No red flags:</b> nothing found. That is not proof. Only a signature or issuer record can prove a file is original.</p>
+    </div>
+  </div>
+  <div class="report" id="report-check" aria-live="polite"><div class="empty">Choose a file to see its report.</div></div>
+</section>
+
+<section id="v-issue" class="view" data-for="issue" hidden>
+  <div class="intake">
+    <div>
+      <p class="eyebrow">For issuers</p>
+      <h2>Sign documents you issue, so anyone can verify them later</h2>
+      <p class="lede">The app hashes the file and signs the hash with your issuer key. Hand the proof out with the document.</p>
+    </div>
+    <label class="field" for="issuer-name">Issuer name
+      <input type="text" id="issuer-name" value="Sample University Registrar" autocomplete="organization">
+    </label>
+    <div class="keybox">
+      <span class="eyebrow">Your issuer key fingerprint</span>
+      <span class="fp mono" id="my-fp">Creating key…</span>
+      <p class="note">Publish this fingerprint on your website so verifiers can confirm proofs really come from you. This prototype keeps the key in this browser only; production keys belong in a key vault.</p>
+      <div class="row"><button type="button" id="new-key">Make a new key</button></div>
+    </div>
+    <label class="drop" id="drop-issue">
+      <input type="file" id="file-issue" aria-label="Choose a document to issue">
+      <strong>Choose the document to issue</strong>
+      <span>Any file type</span>
+    </label>
+    <p class="chosen" id="issue-chosen"></p>
+    <div class="row"><button type="button" class="primary" id="do-issue">Sign and create proof</button></div>
+  </div>
+  <div class="report" id="report-issue"><div class="empty">Choose a document to create its proof.</div></div>
+</section>
+
+<section id="v-verify" class="view" data-for="verify" hidden>
+  <div class="intake">
+    <div>
+      <p class="eyebrow">For verifiers</p>
+      <h2>Is this exactly the document the issuer signed?</h2>
+      <p class="lede">Add the document and paste the proof that came with it. One changed byte breaks the match.</p>
+    </div>
+    <label class="drop" id="drop-verify">
+      <input type="file" id="file-verify" aria-label="Choose the document to verify">
+      <strong>Choose the document</strong>
+      <span>The file exactly as you received it</span>
+    </label>
+    <p class="chosen" id="verify-chosen"></p>
+    <label class="field" for="proof-in">Proof
+      <textarea id="proof-in" spellcheck="false" placeholder='{"format":"docproof/1", …}'></textarea>
+    </label>
+    <div class="samples"><div class="row">
+      <button type="button" class="primary" id="do-verify">Verify</button>
+      <button type="button" id="sv-good">Sample: genuine</button>
+      <button type="button" id="sv-bad">Sample: altered</button>
+    </div></div>
+    <div class="keybox">
+      <span class="eyebrow">Trusted issuers in this browser</span>
+      <ul class="trusted" id="trusted"></ul>
+    </div>
+  </div>
+  <div class="report" id="report-verify" aria-live="polite"><div class="empty">Add a document and its proof.</div></div>
+</section>
+
+</div></main>
+<footer class="gutter"><div class="wrap">Prototype. Findings are evidence for a human reviewer, not a legal ruling.</div></footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hex = buf => Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2,'0')).join('');
+const sha256 = async bytes => hex(await crypto.subtle.digest('SHA-256', bytes));
+function latin1(b){ let s=''; for(let i=0;i<b.length;i+=32768) s+=String.fromCharCode.apply(null, b.subarray(i,i+32768)); return s; }
+const strBytes = s => Uint8Array.from(s, c => c.charCodeAt(0) & 255);
+const fmtSize = n => n<1024 ? n+' B' : n<1048576 ? (n/1024).toFixed(1)+' KB' : (n/1048576).toFixed(2)+' MB';
+const groupHash = h => h.match(/.{1,8}/g).join(' ');
+const fmtDate = d => d && !isNaN(d) ? d.toISOString().replace('T',' ').slice(0,16)+' UTC' : '—';
+function ago(ms){ const m=Math.abs(ms)/60000; if(m<90) return Math.round(m)+' minutes'; const h=m/60; if(h<48) return Math.round(h)+' hours'; return Math.round(h/24)+' days'; }
+const store = {
+  get(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- type sniffing ---------- */
+function sniff(b){
+  const head = latin1(b.subarray(0,16));
+  if (head.startsWith('%PDF')) return 'pdf';
+  if (b[0]===0x89 && head.slice(1,4)==='PNG') return 'png';
+  if (b[0]===0xFF && b[1]===0xD8 && b[2]===0xFF) return 'jpeg';
+  if (head.startsWith('RIFF') && head.slice(8,12)==='WEBP') return 'webp';
+  if (head.startsWith('GIF8')) return 'gif';
+  if (head.slice(4,8)==='ftyp' && /hei|mif1|avif|msf1/.test(head.slice(8,12))) return 'heic';
+  if (b[0]===0x50 && b[1]===0x4B && b[2]===3 && b[3]===4) return 'zip';
+  if (latin1(b.subarray(0,1024)).includes('%PDF-')) return 'pdf';
+  return 'unknown';
+}
+const EXT = {pdf:'pdf',jpg:'jpeg',jpeg:'jpeg',png:'png',webp:'webp',gif:'gif',heic:'heic',heif:'heic',avif:'heic',docx:'zip',xlsx:'zip',pptx:'zip',docm:'zip',xlsm:'zip',pptm:'zip'};
+const KIND_NAME = {pdf:'PDF',png:'PNG image',jpeg:'JPEG image',webp:'WebP image',gif:'GIF image',heic:'HEIC/AVIF image',zip:'ZIP container',unknown:'unknown format'};
+
+/* ---------- shared AI marker scan ---------- */
+const AI_NAMES = /(Midjourney|DALL[··\-_ ]?E|Stable[ _-]?Diffusion|SDXL|ComfyUI|AUTOMATIC1111|NovelAI|InvokeAI|Adobe Firefly|Firefly|Imagen|Ideogram|Leonardo\.?Ai|FLUX\.1|Black Forest Labs|OpenAI|ChatGPT|Gemini|Grok|Runway|Krea)/i;
+function aiMarkers(text, add){
+  let hit=false;
+  if (text.includes('compositeWithTrainedAlgorithmicMedia')){ add('provenance','risk','Metadata says the image is partly AI-generated','The IPTC digital source type is "composite with trained algorithmic media", meaning AI was used to make or change part of it.'); hit=true; }
+  else if (/(^|[^A-Za-z])trainedAlgorithmicMedia/.test(text)){ add('provenance','risk','Metadata says the image is AI-generated','The IPTC digital source type is "trained algorithmic media", the standard label generative-AI tools write.'); hit=true; }
+  const m = text.match(AI_NAMES);
+  if (m){ add('provenance','risk','Names an AI generator: '+m[1],'The file\'s metadata mentions '+m[1]+'. Real camera photos and scans don\'t carry this.'); hit=true; }
+  return hit;
+}
+
+/* ---------- images ---------- */
+const u32 = (b,i) => ((b[i]<<24)|(b[i+1]<<16)|(b[i+2]<<8)|b[i+3])>>>0;
+function imageMeta(b, kind){
+  const parts=[]; const out={pngText:[]};
+  if (kind==='jpeg'){
+    let i=2;
+    while(i+4<b.length && b[i]===0xFF){
+      const m=b[i+1];
+      if (m===0xDA || m===0xD9) break;
+      if ((m>=0xD0 && m<=0xD7) || m===0x01 || m===0xFF){ i+= (m===0xFF?1:2); continue; }
+      const len=(b[i+2]<<8)|b[i+3]; parts.push(latin1(b.subarray(i+4, i+2+len))); i+=2+len;
+    }
+  } else if (kind==='png'){
+    let i=8;
+    while(i+8<=b.length){
+      const len=u32(b,i), type=latin1(b.subarray(i+4,i+8)), data=b.subarray(i+8,i+8+len);
+      if (type!=='IDAT'){ const t=latin1(data); parts.push(type+':'+t); if(type==='tEXt'||type==='iTXt'||type==='zTXt'){ const k=t.split('\0')[0]; out.pngText.push({key:k, value:t.slice(k.length+1).replace(/^[\0\x01]*/,'').slice(0,400)}); } }
+      i+=12+len; if (type==='IEND') break;
+    }
+  } else if (kind==='webp'){
+    let i=12;
+    while(i+8<=b.length){
+      const type=latin1(b.subarray(i,i+4)), len=b[i+4]|(b[i+5]<<8)|(b[i+6]<<16)|(b[i+7]<<24);
+      if (!/^VP8/.test(type)) parts.push(type+':'+latin1(b.subarray(i+8,i+8+len)));
+      i+=8+len+(len&1);
+    }
+  } else parts.push(latin1(b.subarray(0, Math.min(b.length, 262144))));
+  out.text = parts.join('\n');
+  return out;
+}
+async function errorLevel(file){
+  const bmp = await createImageBitmap(file);
+  const sc = Math.min(1, 900/Math.max(bmp.width,bmp.height));
+  const w=Math.max(1,Math.round(bmp.width*sc)), h=Math.max(1,Math.round(bmp.height*sc));
+  const a=document.createElement('canvas'); a.width=w; a.height=h; const ac=a.getContext('2d'); ac.drawImage(bmp,0,0,w,h);
+  const blob=await new Promise(r=>a.toBlob(r,'image/jpeg',0.9)); const bmp2=await createImageBitmap(blob);
+  const bc=document.createElement('canvas').getContext('2d',{willReadFrequently:true}); bc.canvas.width=w; bc.canvas.height=h; bc.drawImage(bmp2,0,0);
+  const d1=ac.getImageData(0,0,w,h).data, d2=bc.getImageData(0,0,w,h).data;
+  const out=document.createElement('canvas'); out.width=w; out.height=h; const oc=out.getContext('2d'); const od=oc.createImageData(w,h);
+  let sum=0;
+  for(let i=0;i<d1.length;i+=4){
+    const diff=Math.max(Math.abs(d1[i]-d2[i]),Math.abs(d1[i+1]-d2[i+1]),Math.abs(d1[i+2]-d2[i+2])); sum+=diff;
+    const v=Math.min(255,diff*14); od.data[i]=v; od.data[i+1]=v*0.72; od.data[i+2]=v*0.35; od.data[i+3]=255;
+  }
+  oc.putImageData(od,0,0);
+  return {orig:a, map:out, mean:sum/(w*h), w:bmp.width, h:bmp.height};
+}
+async function analyzeImage(file, b, kind, add, X){
+  const meta = imageMeta(b, kind);
+  let ex=null;
+  if (window.exifr){ try{ ex = await exifr.parse(file,{tiff:true,exif:true,gps:true,xmp:true,iptc:true,icc:false,jfif:false,ihdr:false,mergeOutput:true}); }catch(e){ ex=null; } }
+  else X.notChecked.push('Camera metadata (the EXIF reader didn\'t load; check your connection).');
+  const metaText = meta.text + (ex ? '\n'+JSON.stringify(ex) : '');
+
+  // Proof layer: C2PA
+  if (/c2pa|jumb/i.test(meta.text)){
+    add('proof','info','Content Credentials (C2PA) found','This file carries a signed provenance record. This prototype reads its claims but does not validate the signature; check it at contentcredentials.org/verify.');
+    X.notChecked.push('C2PA signature validity (planned for the MVP).');
+  } else add('proof','info','No Content Credentials','No signed provenance record. Most photos today have none, so this alone means nothing.');
+
+  // Provenance
+  const ai = aiMarkers(metaText, add);
+  const genKeys = meta.pngText.filter(t => /^(parameters|prompt|workflow|Dream|sd-metadata|invokeai_metadata|negative_prompt)$/i.test(t.key));
+  if (genKeys.length){ add('provenance','risk','Contains AI generation settings','PNG text field "'+esc(genKeys[0].key)+'" holds generator settings: <code>'+esc(genKeys[0].value.slice(0,160))+(genKeys[0].value.length>160?'…':'')+'</code>'); }
+  if (!ai && !genKeys.length) add('provenance','pass','No AI-generator markers in metadata','Markers are easy to strip, so a clean result does not rule out AI.');
+
+  if (ex && (ex.Make || ex.Model)){
+    add('provenance','pass','Camera recorded: '+esc([ex.Make,ex.Model].filter(Boolean).join(' ')), ex.LensModel ? 'Lens: '+esc(ex.LensModel) : 'Camera fields are present, as in an original photo.');
+    X.facts.push(['Camera', [ex.Make,ex.Model].filter(Boolean).join(' ')]);
+  } else add('provenance','info','No camera data','Normal for screenshots, scans, messaging-app copies and downloads. AI images also have none.');
+
+  const sw = ex && (ex.Software || ex.CreatorTool || ex.ProcessingSoftware);
+  if (sw){
+    X.facts.push(['Software', String(sw)]);
+    const ed = String(sw).match(/(Photoshop|Lightroom|GIMP|Snapseed|Pixelmator|Affinity|Canva|PicsArt|Facetune|Fotor|Paint\.NET|Luminar|Photopea|Meitu|Remini|Lensa|Picsart)/i);
+    if (ed) add('forensics','warn','Edited in '+ed[1],'The last program to save this image was <code>'+esc(sw)+'</code>.');
+    else add('provenance','info','Saved by '+esc(sw),'Recorded software field.');
+  }
+  const taken = ex && (ex.DateTimeOriginal || ex.CreateDate), mod = ex && ex.ModifyDate;
+  if (taken instanceof Date) X.facts.push(['Taken', fmtDate(taken)]);
+  if (taken instanceof Date && mod instanceof Date && Math.abs(mod - taken) > 120000)
+    add('forensics','warn','Changed '+ago(mod-taken)+' after it was taken','Original time '+fmtDate(taken)+', modified '+fmtDate(mod)+'.');
+  if (ex && typeof ex.latitude === 'number') add('provenance','info','Location recorded','GPS position '+ex.latitude.toFixed(4)+', '+ex.longitude.toFixed(4)+'. Check it matches where the photo should be from.');
+
+  // Forensics: ELA
+  try{
+    const e = await errorLevel(file);
+    X.facts.push(['Dimensions', e.w+' × '+e.h+' px']);
+    X.ela = e;
+    add('forensics','info','Error-level map below','Re-saving shows how each area compresses. Bright patches that don\'t follow edges or texture can mean pasted or retouched areas. Average level '+e.mean.toFixed(2)+'. Read it by eye; it is not proof.');
+  }catch(err){ X.notChecked.push('Error-level analysis (this browser couldn\'t decode the image).'); }
+  X.notChecked.push('AI-image detector model (planned for v1, as one weak signal).');
+}
+
+/* ---------- PDF ---------- */
+function pdfLiteral(s){
+  let o='';
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if (c==='\\'){ const n=s[i+1];
+      if (/[0-7]/.test(n)){ let d=n; if(/[0-7]/.test(s[i+2])){ d+=s[i+2]; if(/[0-7]/.test(s[i+3])) d+=s[i+3]; } o+=String.fromCharCode(parseInt(d,8)&255); i+=d.length; }
+      else { o+=({n:'\n',r:'\r',t:'\t',b:'\b',f:'\f'})[n] ?? n; i++; } }
+    else o+=c;
+  }
+  return utf16(o);
+}
+function utf16(s){
+  if (s.charCodeAt(0)===0xFE && s.charCodeAt(1)===0xFF){ let o=''; for(let i=2;i+1<s.length;i+=2) o+=String.fromCharCode((s.charCodeAt(i)<<8)|s.charCodeAt(i+1)); return o; }
+  return s;
+}
+function pdfValues(raw, key){
+  const re = new RegExp('/'+key+'\\s*(\\((?:\\\\[\\s\\S]|[^\\\\)])*\\)|<[0-9A-Fa-f\\s]*>)','g'); const out=[]; let m;
+  while((m=re.exec(raw))){ const v=m[1];
+    if (v[0]==='(') out.push(pdfLiteral(v.slice(1,-1)).trim());
+    else { const h=v.slice(1,-1).replace(/\s/g,''); let s=''; for(let i=0;i+1<h.length;i+=2) s+=String.fromCharCode(parseInt(h.substr(i,2),16)); out.push(utf16(s).trim()); } }
+  return out.filter(Boolean);
+}
+function pdfDate(s){
+  const m = s && s.match(/D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?([Z+\-])?(\d{2})?'?(\d{2})?/); if(!m) return null;
+  let t = Date.UTC(+m[1], (+(m[2]||1))-1, +(m[3]||1), +(m[4]||0), +(m[5]||0), +(m[6]||0));
+  if (m[7]==='+' || m[7]==='-'){ const off=((+(m[8]||0))*60 + (+(m[9]||0)))*60000; t += m[7]==='+' ? -off : off; }
+  return new Date(t);
+}
+const PDF_EDITORS = /(iLovePDF|Smallpdf|Sejda|PDFescape|pdfFiller|PDFfiller|DocFly|PDF Candy|PDF-XChange|Foxit PhantomPDF|Foxit PDF Editor|Nitro|PDFelement|Wondershare|Soda PDF|PDF24|Canva|Inkscape|LibreOffice Draw|Acrobat Pro)/i;
+async function analyzePdf(b, add, X){
+  const raw = latin1(b);
+  const ver = (raw.match(/%PDF-(\d\.\d)/)||[])[1]; if (ver) X.facts.push(['PDF version', ver]);
+
+  // Proof: signatures
+  const sigRe=/\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/g; let m, sigs=[];
+  while((m=sigRe.exec(raw))) sigs.push(m.slice(1,5).map(Number));
+  if (sigs.length){
+    const last = sigs.reduce((a,s)=> (s[2]+s[3]>a[2]+a[3]?s:a));
+    const covered = last[2]+last[3];
+    const trailing = b.length - covered;
+    const tail = latin1(b.subarray(covered)).trim();
+    if (trailing<=2 || tail==='' ) add('proof','pass','Signed, and unchanged since the last signature', sigs.length+' signature'+(sigs.length>1?'s':'')+'. The last one covers the whole file. Confirm the signer\'s certificate in Adobe Acrobat; this prototype doesn\'t check certificates.');
+    else add('proof','warn','Changed after it was signed', fmtSize(trailing)+' were added after the last signature. Content added later is not protected by that signature.');
+    X.notChecked.push('Signature certificate chain and revocation (planned for the MVP).');
+  } else add('proof','info','Not digitally signed','Nothing in the file can prove it is unchanged. Ask the issuer for a signed copy or a credential proof.');
+
+  // Provenance
+  const producers=[...new Set(pdfValues(raw,'Producer'))], creators=[...new Set(pdfValues(raw,'Creator'))];
+  const xmpTool=(raw.match(/<xmp:CreatorTool>([^<]{1,200})</)||[])[1], xmpProd=(raw.match(/<pdf:Producer>([^<]{1,200})</)||[])[1];
+  if (xmpTool && !creators.includes(xmpTool)) creators.push(xmpTool);
+  if (xmpProd && !producers.includes(xmpProd)) producers.push(xmpProd);
+  if (creators.length) X.facts.push(['Created with', creators.join(' → ')]);
+  if (producers.length) X.facts.push(['Saved by', producers.join(' → ')]);
+  if (!producers.length && !creators.length) add('provenance','info','No creator or producer recorded','The program names were removed or never written. Common after flattening or "print to PDF", and also after deliberate cleaning.');
+  if (producers.length>1) add('provenance','warn','Saved by '+producers.length+' different programs','In order found: '+producers.map(p=>'<code>'+esc(p)+'</code>').join(' then ')+'. The file was opened and re-saved in another tool after it was made.');
+  const ed = [...producers,...creators].join(' | ').match(PDF_EDITORS);
+  if (ed) add('provenance','warn','Touched by a PDF editing tool: '+ed[1],'These tools can change text, amounts and signatures on an existing PDF.');
+  aiMarkers([...producers,...creators].join('\n'), add);
+
+  const cd = pdfDate(pdfValues(raw,'CreationDate')[0]), mdAll = pdfValues(raw,'ModDate').map(pdfDate).filter(Boolean), md = mdAll.sort((a,c)=>c-a)[0];
+  if (cd) X.facts.push(['Created', fmtDate(cd)]);
+  if (md) X.facts.push(['Last modified', fmtDate(md)]);
+  if (cd && md){
+    if (md < cd - 60000) add('forensics','warn','Modified before it was created','The dates contradict each other, which usually means they were edited by hand.');
+    else if (md - cd > 300000) add('provenance','info','Modified '+ago(md-cd)+' after creation','Created '+fmtDate(cd)+', last modified '+fmtDate(md)+'.');
+  }
+
+  // Forensics
+  const linear = /\/Linearized/.test(raw.slice(0,2048));
+  const eofs = (raw.match(/%%EOF/g)||[]).length - (linear?1:0);
+  if (eofs>1) add('forensics','warn','Edited after it was first saved ('+(eofs-1)+' later revision'+(eofs>2?'s':'')+')','PDFs keep earlier versions inside the file when changes are appended. Normal for filled-in forms or signatures; suspicious on a final certificate or statement.');
+  else add('forensics','pass','Single revision','No appended changes found.');
+
+  const fonts=[...raw.matchAll(/\/BaseFont\s*\/([A-Za-z0-9+\-_,#.]+)/g)].map(x=>x[1]);
+  const fam={}; fonts.forEach(f=>{ const mm=f.match(/^([A-Z]{6})\+(.+)$/); if(mm){ (fam[mm[2]] ||= new Set()).add(mm[1]); } });
+  const dup=Object.entries(fam).filter(([,s])=>s.size>1).map(([n])=>n);
+  if (dup.length) add('forensics','warn','Same font embedded more than once','<code>'+esc(dup.join(', '))+'</code> appears as separate font subsets. That happens when text is added by a different program from the one that made the page.');
+  const distinct=new Set(fonts.map(f=>f.replace(/^[A-Z]{6}\+/,''))).size; if (distinct) X.facts.push(['Fonts', distinct+' distinct']);
+
+  const freeText=(raw.match(/\/Subtype\s*\/FreeText/g)||[]).length, stamps=(raw.match(/\/Subtype\s*\/Stamp/g)||[]).length;
+  const whiteBox=/\/Subtype\s*\/(Square|Polygon)[\s\S]{0,300}?\/IC\s*\[\s*1(\.0+)?\s+1(\.0+)?\s+1(\.0+)?\s*\]/.test(raw) || /\/IC\s*\[\s*1(\.0+)?\s+1(\.0+)?\s+1(\.0+)?\s*\][\s\S]{0,300}?\/Subtype\s*\/(Square|Polygon)/.test(raw);
+  if (whiteBox) add('forensics','warn','White boxes laid over the page','A filled white shape annotation can hide the original text underneath.');
+  if (freeText) add('forensics','warn',freeText+' text box'+(freeText>1?'es':'')+' added on top of the page','Typed text annotations sit above the original content and can replace what the reader sees.');
+  if (stamps) add('forensics','info',stamps+' stamp annotation'+(stamps>1?'s':''),'Stamps and image stamps are often used for signatures and seals; check they are expected.');
+  if (/\/JavaScript|\/JS\s*[(<\[]/.test(raw)) add('forensics','warn','Contains JavaScript','Unusual in a contract or certificate. It can change what is shown when the file opens.');
+  if (/\/Launch/.test(raw)) add('forensics','warn','Contains a launch action','The file can try to open other programs. Treat it as unsafe.');
+  if (/\/EmbeddedFile/.test(raw)) add('forensics','info','Has attached files','Attachments can carry earlier versions or other content.');
+  if (/\/ObjStm/.test(raw)) X.notChecked.push('Objects inside compressed streams (needs a full PDF parser; planned for the MVP).');
+  X.notChecked.push('Visible text compared with the hidden text layer (OCR, planned for v1).');
+}
+
+/* ---------- Office ---------- */
+const xmlTag = (x,t) => { const m = x && x.match(new RegExp('<'+t+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+t+'>')); return m ? m[1].replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&').trim() : ''; };
+async function analyzeOffice(b, add, X){
+  if (!window.JSZip){ add('provenance','warn','Could not open this file','The ZIP reader didn\'t load. Check your connection and try again.'); return 'ZIP container'; }
+  const zip = await JSZip.loadAsync(b);
+  const names = Object.keys(zip.files);
+  const read = async n => zip.file(n) ? zip.file(n).async('string') : '';
+  const label = names.some(n=>n.startsWith('word/')) ? 'Word document' : names.some(n=>n.startsWith('xl/')) ? 'Excel workbook' : names.some(n=>n.startsWith('ppt/')) ? 'PowerPoint deck' : null;
+  if (!label){ add('provenance','info','ZIP archive, not an Office file','This prototype checks Office files inside ZIP containers only.'); return 'ZIP archive'; }
+
+  // Proof
+  if (names.some(n=>n.startsWith('_xmlsignatures/'))){ add('proof','info','Digitally signed in Office','Open it in Office (File › Info) to confirm the signature is valid and who signed it.'); X.notChecked.push('Office signature validity (planned for the MVP).'); }
+  else add('proof','info','Not digitally signed','Nothing in the file can prove it is unchanged.');
+
+  // Provenance
+  const core = await read('docProps/core.xml'), app = await read('docProps/app.xml');
+  const creator=xmlTag(core,'dc:creator'), lastBy=xmlTag(core,'cp:lastModifiedBy'), rev=+xmlTag(core,'cp:revision')||0;
+  const created=new Date(xmlTag(core,'dcterms:created')), modified=new Date(xmlTag(core,'dcterms:modified'));
+  const application=xmlTag(app,'Application'), appVer=xmlTag(app,'AppVersion'), total=xmlTag(app,'TotalTime');
+  if (creator) X.facts.push(['Author', creator]);
+  if (lastBy) X.facts.push(['Last saved by', lastBy]);
+  if (application) X.facts.push(['Application', application+(appVer?' '+appVer:'')]);
+  if (!isNaN(created)) X.facts.push(['Created', fmtDate(created)]);
+  if (!isNaN(modified)) X.facts.push(['Last modified', fmtDate(modified)]);
+  if (rev) X.facts.push(['Revision', String(rev)+(total!==''?' · '+total+' min editing':'')]);
+  if (!core) add('provenance','info','No document properties','The author and date fields were removed or never written.');
+  if (creator && lastBy && creator!==lastBy) add('provenance','info','Last saved by someone other than the author','Created by <code>'+esc(creator)+'</code>, last saved by <code>'+esc(lastBy)+'</code>. Check the second person was meant to edit it.');
+  if (!app) add('provenance','info','Not saved by a desktop Office app','No application record, typical of files made by scripts or converters.');
+  const gen=[application,creator,lastBy,xmlTag(core,'dc:description')].join(' ').match(/(python-docx|openpyxl|python-pptx|docx4j|Aspose|PHPWord|PhpSpreadsheet|pandoc|LibreOffice|Google)/i);
+  if (gen) add('provenance','info','Generated or converted by '+gen[1],'Not by itself a problem, but it isn\'t the original authoring app.');
+  aiMarkers([application,creator,lastBy,xmlTag(core,'dc:description'),xmlTag(core,'cp:keywords')].join('\n'), add);
+  if (!isNaN(created) && !isNaN(modified)){
+    if (modified < created - 60000) add('forensics','warn','Modified before it was created','The dates contradict each other, which usually means they were edited.');
+    else if (modified - created > 300000) add('provenance','info','Modified '+ago(modified-created)+' after creation','Created '+fmtDate(created)+', last modified '+fmtDate(modified)+'.');
+  }
+  if (rev>3 && total!=='' && +total<=1) add('forensics','info',rev+' revisions but '+total+' minute'+(+total===1?'':'s')+' of editing','The counters don\'t match normal editing. Converters and metadata tools can reset them.');
+
+  // Forensics
+  if (names.some(n=>/vbaProject\.bin$/i.test(n))) add('forensics','warn','Contains macros','Macros can change content when the file opens. Unusual for a letter or certificate.');
+  if (names.some(n=>/\/embeddings\//.test(n))) add('forensics','info','Has embedded objects','Embedded files or spreadsheets can hold other versions of the content.');
+  if (label==='Word document'){
+    const doc = await read('word/document.xml');
+    const ins=(doc.match(/<w:ins\b/g)||[]).length, del=(doc.match(/<w:del\b/g)||[]).length;
+    if (ins||del){
+      const delText=[...doc.matchAll(/<w:delText[^>]*>([^<]*)<\/w:delText>/g)].map(x=>x[1]).join('').trim();
+      const insText=[...doc.matchAll(/<w:ins\b[\s\S]*?<\/w:ins>/g)].map(x=>[...x[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(y=>y[1]).join('')).join(' ').trim();
+      const who=[...new Set([...doc.matchAll(/<w:(?:ins|del)\b[^>]*w:author="([^"]*)"/g)].map(x=>x[1]))];
+      add('forensics','warn','Tracked changes: '+ins+' insertion'+(ins!==1?'s':'')+', '+del+' deletion'+(del!==1?'s':''),
+        (delText?'Removed: <code>'+esc(delText.slice(0,120))+'</code>. ':'')+(insText?'Added: <code>'+esc(insText.slice(0,120))+'</code>. ':'')+(who.length?'By '+esc(who.join(', '))+'.':''));
+    } else add('forensics','pass','No tracked changes','No pending insertions or deletions.');
+    if (/<w:vanish\s*\/>/.test(doc)) add('forensics','warn','Contains hidden text','Some text is formatted as hidden and won\'t show or print.');
+    const comments=(await read('word/comments.xml')).match(/<w:comment\b/g); if (comments) add('forensics','info',comments.length+' comment'+(comments.length>1?'s':''),'Review comments can reveal earlier wording or discussion.');
+    const settings=await read('word/settings.xml'); const rs=(settings.match(/<w:rsid\b/g)||[]).length;
+    if (rs) X.facts.push(['Editing sessions', 'about '+rs+' (Word save IDs)']);
+  }
+  if (label==='Excel workbook'){
+    const wb=await read('xl/workbook.xml'); const hidden=(wb.match(/state="(hidden|veryHidden)"/g)||[]).length;
+    if (hidden) add('forensics','warn',hidden+' hidden sheet'+(hidden>1?'s':''),'Hidden sheets can hold the real figures or earlier versions.');
+    const ext=names.filter(n=>/externalLinks\//.test(n)).length; if (ext) add('forensics','info','Links to other workbooks','Figures may come from files you don\'t have.');
+  }
+  X.notChecked.push('Content compared with an original copy (needs the issuer\'s record).');
+  return label;
+}
+
+/* ---------- report ---------- */
+const LAYERS = [['proof','Proof','Cryptographic evidence that the file is unchanged'],['provenance','Origin and metadata','Who or what made the file, and when'],['forensics','Signs of editing','Traces that edits or other tools leave behind']];
+const PILL = {pass:'Pass',info:'Info',warn:'Warning',risk:'Risk'};
+const ORDER = {risk:0,warn:1,info:2,pass:3};
+const SEAL = {
+  verified:'<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clear:'<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>',
+  review:'<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="18" r="1.4" fill="currentColor"/></svg>',
+  bad:'<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
+};
+function verdictOf(F){
+  const c={risk:0,warn:0}; F.forEach(f=>{ if(f.level in c) c[f.level]++; });
+  if (c.risk) return {key:'bad',name:'Likely manipulated',why:'Strong signs of AI generation or tampering. Don\'t rely on this file without the original from its source.'};
+  if (c.warn) return {key:'review',name:'Needs review',why:c.warn+' sign'+(c.warn>1?'s':'')+' of editing after the file was made. Ask the sender for the original or a signed copy.'};
+  return {key:'clear',name:'No red flags',why:'Nothing suspicious found. That isn\'t proof: only a signature or an issuer record can prove a file is original.'};
+}
+function renderReport(el, R){
+  const v = R.verdict || verdictOf(R.findings);
+  const cnt = {risk:0,warn:0,info:0,pass:0}; R.findings.forEach(f=>cnt[f.level]++);
+  let h = '<div class="verdict v-'+v.key+'"><div class="seal">'+SEAL[v.key]+'</div>'+
+    '<p class="vname">'+esc(v.name)+(R.sample?'<span class="tag">Sample file</span>':'')+'</p><p class="vwhy">'+esc(v.why)+'</p>'+
+    '<div class="counts">'+['risk','warn','info','pass'].filter(k=>cnt[k]).map(k=>'<span class="pill p-'+k+'" style="padding:2px 8px">'+cnt[k]+' '+PILL[k]+'</span>').join('')+'</div></div>';
+  h += '<dl class="facts">'+R.facts.map(([k,val,mono])=>'<dt>'+esc(k)+'</dt><dd'+(mono?' class="mono"':'')+'>'+esc(val)+'</dd>').join('')+'</dl>';
+  for (const [id,title,sub] of LAYERS){
+    const items = R.findings.filter(f=>f.layer===id).sort((a,b)=>ORDER[a.level]-ORDER[b.level]);
+    if (!items.length) continue;
+    h += '<div class="layer"><h3>'+title+'</h3><p class="sub">'+sub+'</p><ul class="findings">'+
+      items.map(f=>'<li class="f"><span class="pill p-'+f.level+'">'+PILL[f.level]+'</span><div><strong>'+f.title+'</strong>'+(f.detail?'<p>'+f.detail+'</p>':'')+'</div></li>').join('')+'</ul>'+
+      (id==='forensics' && R.ela ? '<div class="ela" id="ela-slot"></div>' : '')+'</div>';
+  }
+  if (R.notChecked && R.notChecked.length) h += '<div class="layer"><h3>Not checked</h3><p class="sub">Limits of this report</p><ul class="notchecked">'+[...new Set(R.notChecked)].map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul></div>';
+  el.innerHTML = h;
+  if (R.ela){
+    const slot = el.querySelector('#ela-slot');
+    const f1=document.createElement('figure'), f2=document.createElement('figure');
+    f1.append(R.ela.orig); f1.insertAdjacentHTML('beforeend','<figcaption>Image as decoded</figcaption>');
+    f2.append(R.ela.map); f2.insertAdjacentHTML('beforeend','<figcaption>Error-level map. Even texture is normal; isolated bright blocks deserve a closer look.</figcaption>');
+    slot.append(f1,f2);
+  }
+}
+const loading = el => el.innerHTML = '<div class="empty"><span class="spin"></span>Reading the file…</div>';
+
+async function checkFile(file, sample){
+  const el = $('#report-check'); loading(el);
+  try{
+    const b = new Uint8Array(await file.arrayBuffer());
+    const kind = sniff(b), hash = await sha256(b);
+    const F=[]; const add=(layer,level,title,detail)=>F.push({layer,level,title,detail});
+    const X={facts:[], notChecked:[], ela:null};
+    const ext=(file.name.split('.').pop()||'').toLowerCase();
+    if (EXT[ext] && kind!=='unknown' && EXT[ext]!==kind) add('forensics','warn','File name doesn\'t match its contents','Named .'+esc(ext)+' but the contents are a '+KIND_NAME[kind]+'. Files are sometimes renamed to get past upload checks.');
+    let typeLabel = KIND_NAME[kind];
+    if (kind==='pdf') { typeLabel='PDF document'; await analyzePdf(b,add,X); }
+    else if (['png','jpeg','webp','gif','heic'].includes(kind)) await analyzeImage(file,b,kind,add,X);
+    else if (kind==='zip') typeLabel = await analyzeOffice(b,add,X);
+    else add('provenance','info','Format not supported yet','This prototype reads PDFs, Office files and images.');
+    X.notChecked.push('Whether what the document says is true.');
+    renderReport(el, {sample, findings:F, ela:X.ela, notChecked:X.notChecked,
+      facts:[['File', file.name], ['Type', typeLabel+' · '+fmtSize(b.length)], ...X.facts, ['SHA-256', groupHash(hash), true]]});
+  }catch(err){
+    el.innerHTML = '<div class="empty">Couldn\'t read this file: '+esc(err.message||err)+'. It may be damaged or password-protected.</div>';
+  }
+}
+
+/* ---------- samples ---------- */
+function pdfDoc(objs, infoNum){
+  let s='%PDF-1.7\n%\xE2\xE3\xCF\xD3\n'; const off=[];
+  objs.forEach((o,i)=>{ off[i]=s.length; s+=(i+1)+' 0 obj\n'+o+'\nendobj\n'; });
+  const x=s.length;
+  s+='xref\n0 '+(objs.length+1)+'\n0000000000 65535 f \n'+off.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('');
+  s+='trailer\n<< /Size '+(objs.length+1)+' /Root 1 0 R /Info '+infoNum+' 0 R >>\nstartxref\n'+x+'\n%%EOF\n';
+  return {s,x,size:objs.length+1};
+}
+function pdfUpdate(base, upd, infoNum){
+  let s=base.s; const ent=[];
+  for (const [n,o] of Object.entries(upd)){ ent.push([+n,s.length]); s+=n+' 0 obj\n'+o+'\nendobj\n'; }
+  const x=s.length; ent.sort((a,c)=>a[0]-c[0]);
+  s+='xref\n'+ent.map(([n,o])=>n+' 1\n'+String(o).padStart(10,'0')+' 00000 n \n').join('');
+  s+='trailer\n<< /Size '+Math.max(base.size,...ent.map(e=>e[0]+1))+' /Root 1 0 R /Info '+infoNum+' 0 R /Prev '+base.x+' >>\nstartxref\n'+x+'\n%%EOF\n';
+  return s;
+}
+const stream = c => '<< /Length '+c.length+' >>\nstream\n'+c+'\nendstream';
+function samplePdf(){
+  const content='BT /F1 20 Tf 72 720 Td (SERVICE AGREEMENT) Tj ET\nBT /F1 12 Tf 72 680 Td (Client: Northbay Logistics Inc.) Tj ET\nBT /F1 12 Tf 72 660 Td (Total fee: PHP 25,000.00) Tj ET\nBT /F1 12 Tf 72 640 Td (Signed in Quezon City, 12 March 2026) Tj ET';
+  const base = pdfDoc([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    stream(content),
+    '<< /Type /Font /Subtype /TrueType /BaseFont /KQXBAF+Calibri /Encoding /WinAnsiEncoding >>',
+    '<< >>',
+    '<< /Producer (Microsoft\xAE Word for Microsoft 365) /Creator (Microsoft\xAE Word for Microsoft 365) /CreationDate (D:20260312093000+08\'00\') /ModDate (D:20260312093000+08\'00\') >>'
+  ], 7);
+  const s = pdfUpdate(base, {
+    3:'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R /Annots [8 0 R 9 0 R] >>',
+    6:'<< /Type /Font /Subtype /TrueType /BaseFont /ZPLMQE+Calibri /Encoding /WinAnsiEncoding >>',
+    7:'<< /Producer (iLovePDF) /Creator (Microsoft\xAE Word for Microsoft 365) /CreationDate (D:20260312093000+08\'00\') /ModDate (D:20261102214512+08\'00\') >>',
+    8:'<< /Type /Annot /Subtype /Square /Rect [70 655 260 672] /C [1 1 1] /IC [1 1 1] /F 4 >>',
+    9:'<< /Type /Annot /Subtype /FreeText /Rect [70 655 300 672] /Contents (Total fee: PHP 250,000.00) /DA (/F2 12 Tf 0 g) /F 4 >>'
+  }, 7);
+  return new File([strBytes(s)], 'service-agreement-signed.pdf', {type:'application/pdf'});
+}
+const CRC = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=CRC[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+async function samplePng(){
+  const c=document.createElement('canvas'); c.width=480; c.height=600; const g=c.getContext('2d');
+  const bg=g.createLinearGradient(0,0,0,600); bg.addColorStop(0,'#cfd8dc'); bg.addColorStop(1,'#90a4ae'); g.fillStyle=bg; g.fillRect(0,0,480,600);
+  g.fillStyle='#37474f'; g.beginPath(); g.ellipse(240,640,210,200,0,0,Math.PI*2); g.fill();
+  const sk=g.createRadialGradient(225,250,20,240,270,150); sk.addColorStop(0,'#e8c3a6'); sk.addColorStop(1,'#b98868'); g.fillStyle=sk;
+  g.beginPath(); g.ellipse(240,270,110,140,0,0,Math.PI*2); g.fill(); g.fillRect(205,380,70,70);
+  g.fillStyle='#2b1d16'; g.beginPath(); g.ellipse(240,180,120,75,0,Math.PI,0); g.fill();
+  g.fillStyle='#3e2a20'; [195,285].forEach(x=>{ g.beginPath(); g.ellipse(x,265,12,7,0,0,Math.PI*2); g.fill(); });
+  g.strokeStyle='#8a4f3c'; g.lineWidth=5; g.beginPath(); g.arc(240,320,34,0.2*Math.PI,0.8*Math.PI); g.stroke();
+  const png = new Uint8Array(await (await new Promise(r=>c.toBlob(r,'image/png'))).arrayBuffer());
+  const text = 'parameters\0passport-style portrait photo, neutral background, studio lighting, photorealistic\nNegative prompt: blurry, cartoon\nSteps: 30, Sampler: DPM++ 2M Karras, CFG scale: 6, Seed: 2214093317, Size: 480x600, Model: sd_xl_base_1.0';
+  const data = strBytes(text), type = strBytes('tEXt');
+  const chunk = new Uint8Array(12+data.length); const dv=new DataView(chunk.buffer);
+  dv.setUint32(0,data.length); chunk.set(type,4); chunk.set(data,8);
+  const ci=new Uint8Array(4+data.length); ci.set(type,0); ci.set(data,4); dv.setUint32(8+data.length, crc32(ci));
+  const out = new Uint8Array(png.length+chunk.length); out.set(png.subarray(0,33),0); out.set(chunk,33); out.set(png.subarray(33),33+chunk.length);
+  return new File([out], 'id-photo.png', {type:'image/png'});
+}
+async function sampleDocx(){
+  const z = new JSZip();
+  z.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>');
+  z.file('_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>');
+  z.file('word/_rels/document.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>');
+  z.file('word/document.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Offer of Employment</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">Position: Operations Analyst. Monthly salary: </w:t></w:r><w:del w:id="1" w:author="j.reyes" w:date="2026-10-30T22:14:00Z"><w:r><w:delText>PHP 35,000</w:delText></w:r></w:del><w:ins w:id="2" w:author="j.reyes" w:date="2026-10-30T22:14:00Z"><w:r><w:t>PHP 85,000</w:t></w:r></w:ins><w:r><w:t>.</w:t></w:r></w:p><w:p><w:r><w:rPr><w:vanish/></w:rPr><w:t>Draft - not approved by HR</w:t></w:r></w:p></w:body></w:document>');
+  z.file('word/settings.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:rsids><w:rsidRoot w:val="00A1B2C3"/><w:rsid w:val="00A1B2C3"/><w:rsid w:val="00B4C5D6"/><w:rsid w:val="00E7F809"/></w:rsids></w:settings>');
+  z.file('docProps/core.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>Maria Santos (HR)</dc:creator><cp:lastModifiedBy>j.reyes</cp:lastModifiedBy><cp:revision>7</cp:revision><dcterms:created xsi:type="dcterms:W3CDTF">2026-10-21T01:05:00Z</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">2026-10-30T22:15:00Z</dcterms:modified></cp:coreProperties>');
+  z.file('docProps/app.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Microsoft Office Word</Application><AppVersion>16.0000</AppVersion><TotalTime>1</TotalTime></Properties>');
+  const b = await z.generateAsync({type:'uint8array'});
+  return new File([b], 'offer-letter-final.docx', {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+}
+function sampleDiploma(){
+  const c='BT /F1 22 Tf 72 700 Td (CERTIFICATE OF COMPLETION) Tj ET\nBT /F1 13 Tf 72 660 Td (This certifies that Juan Dela Cruz) Tj ET\nBT /F1 13 Tf 72 640 Td (completed the Data Analytics Program, Batch 2026-B.) Tj ET\nBT /F1 11 Tf 72 600 Td (Credential no. 2026-B-0417) Tj ET';
+  const d = pdfDoc(['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',stream(c),'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>','<< /Producer (Registrar Records System) /CreationDate (D:20261105100000+08\'00\') >>'],6);
+  return new File([strBytes(d.s)], 'certificate-juan-dela-cruz.pdf', {type:'application/pdf'});
+}
+
+/* ---------- credentials ---------- */
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const unb64u = s => Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((s.length+3)%4)), c=>c.charCodeAt(0));
+const ALG = {name:'ECDSA', namedCurve:'P-256'}, SIG = {name:'ECDSA', hash:'SHA-256'};
+let myKey = null; // {priv: CryptoKey, pubJwk}
+async function fingerprint(jwk){ const h = await sha256(new TextEncoder().encode(jwk.x+'.'+jwk.y)); return h.slice(0,24).toUpperCase().match(/.{4}/g).join(' '); }
+async function loadKey(forceNew){
+  let saved = forceNew ? null : store.get('ac.issuerKey');
+  if (saved){ try{ myKey = {priv: await crypto.subtle.importKey('jwk', saved.priv, ALG, true, ['sign']), pubJwk: saved.pub}; }catch(e){ saved=null; } }
+  if (!saved){
+    const kp = await crypto.subtle.generateKey(ALG, true, ['sign','verify']);
+    const priv = await crypto.subtle.exportKey('jwk', kp.privateKey), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
+    myKey = {priv: kp.privateKey, pubJwk: {kty:pub.kty, crv:pub.crv, x:pub.x, y:pub.y}};
+    store.set('ac.issuerKey', {priv, pub: myKey.pubJwk});
+  }
+  const fp = await fingerprint(myKey.pubJwk);
+  $('#my-fp').textContent = fp;
+  trust(fp, $('#issuer-name').value.trim() || 'My issuer key');
+}
+let trustedList = store.get('ac.trusted') || [];
+function trust(fp, name){ if (!trustedList.some(t=>t.fp===fp)){ trustedList.push({fp,name}); store.set('ac.trusted', trustedList); } renderTrusted(); }
+function renderTrusted(){
+  const ul=$('#trusted');
+  ul.innerHTML = trustedList.length ? trustedList.map((t,i)=>'<li><span><b>'+esc(t.name)+'</b><br><span class="mono">'+esc(t.fp)+'</span></span><button type="button" data-rm="'+i+'">Remove</button></li>').join('') : '<li><span class="note">None yet.</span></li>';
+}
+$('#trusted').addEventListener('click', e=>{ const i=e.target.dataset.rm; if(i!==undefined){ trustedList.splice(+i,1); store.set('ac.trusted',trustedList); renderTrusted(); } });
+const signedPart = p => JSON.stringify({format:p.format, credentialId:p.credentialId, issuer:p.issuer, issuedAt:p.issuedAt, file:{name:p.file.name, size:p.file.size, sha256:p.file.sha256}, publicKey:{kty:p.publicKey.kty, crv:p.publicKey.crv, x:p.publicKey.x, y:p.publicKey.y}});
+async function issue(file){
+  if (!myKey) await loadKey();
+  const b = new Uint8Array(await file.arrayBuffer());
+  const p = {format:'docproof/1', credentialId:'DC-'+hex(crypto.getRandomValues(new Uint8Array(4))).toUpperCase(), issuer:$('#issuer-name').value.trim()||'Unnamed issuer',
+    issuedAt:new Date().toISOString().slice(0,19)+'Z', file:{name:file.name, size:b.length, sha256:await sha256(b)}, publicKey:myKey.pubJwk};
+  p.signature = b64u(await crypto.subtle.sign(SIG, myKey.priv, new TextEncoder().encode(signedPart(p))));
+  return p;
+}
+function renderIssued(p, fp, sample){
+  const el=$('#report-issue'); const json=JSON.stringify(p,null,2);
+  el.innerHTML = '<div class="verdict v-verified"><div class="seal">'+SEAL.verified+'</div><p class="vname">Proof created'+(sample?'<span class="tag">Sample file</span>':'')+'</p><p class="vwhy">Give this proof to the holder with the document. Anyone can check it in Verify credential.</p></div>'+
+    '<dl class="facts"><dt>Credential</dt><dd class="mono">'+esc(p.credentialId)+'</dd><dt>Issuer</dt><dd>'+esc(p.issuer)+'</dd><dt>Document</dt><dd>'+esc(p.file.name)+' · '+fmtSize(p.file.size)+'</dd><dt>SHA-256</dt><dd class="mono">'+groupHash(p.file.sha256)+'</dd><dt>Key fingerprint</dt><dd class="mono">'+esc(fp)+'</dd><dt>Issued</dt><dd>'+esc(p.issuedAt.replace('T',' ').replace('Z',' UTC'))+'</dd></dl>'+
+    '<div class="layer"><h3>Proof</h3><p class="sub">Copy and send this with the document, or store it in your records system.</p><label class="field" for="proof-out" style="font-weight:400"><textarea id="proof-out" readonly spellcheck="false">'+esc(json)+'</textarea></label>'+
+    '<div class="copyrow" style="margin-top:10px"><button type="button" class="primary" id="copy-proof">Copy proof</button><button type="button" id="send-verify">Open in Verify</button><span class="toast" id="copied" role="status"></span></div></div>';
+  $('#copy-proof').onclick = async ()=>{ const ta=$('#proof-out'); try{ await navigator.clipboard.writeText(ta.value); $('#copied').textContent='Copied'; }catch(e){ ta.focus(); ta.select(); $('#copied').textContent='Selected. Press Ctrl+C or ⌘C to copy.'; } };
+  $('#send-verify').onclick = ()=>{ $('#proof-in').value=json; if(issueFile){ verifyFile=issueFile; $('#verify-chosen').textContent='Document: '+issueFile.name; } location.hash='verify'; runVerify(false); };
+}
+async function verify(file, proofText){
+  const F=[]; const add=(layer,level,title,detail)=>F.push({layer,level,title,detail});
+  let p; try{ p = JSON.parse(proofText); }catch(e){ return {error:'The proof isn\'t valid JSON. Paste the whole proof, from { to }.'}; }
+  if (!p || p.format!=='docproof/1' || !p.file || !p.publicKey || !p.signature) return {error:'This doesn\'t look like a docproof/1 proof. It needs file, publicKey and signature fields.'};
+  const b = new Uint8Array(await file.arrayBuffer()); const h = await sha256(b);
+  let sigOk=false;
+  try{ const key = await crypto.subtle.importKey('jwk', {kty:p.publicKey.kty, crv:p.publicKey.crv, x:p.publicKey.x, y:p.publicKey.y, ext:true}, ALG, false, ['verify']);
+       sigOk = await crypto.subtle.verify(SIG, key, unb64u(p.signature), new TextEncoder().encode(signedPart(p))); }catch(e){ sigOk=false; }
+  const fp = await fingerprint(p.publicKey); const t = trustedList.find(x=>x.fp===fp);
+  const hashOk = h === p.file.sha256;
+  if (sigOk) add('proof','pass','Issuer signature is valid','The proof was signed by the key with fingerprint <code>'+esc(fp)+'</code> and hasn\'t been altered.');
+  else add('proof','risk','Issuer signature is invalid','The proof was edited after signing, or signed by a different key. Don\'t trust any of its details.');
+  if (hashOk) add('proof','pass','Document matches the issued file','Its SHA-256 fingerprint is identical to the one the issuer signed.');
+  else add('proof','risk','Document differs from the issued file', 'Expected <code>'+esc(String(p.file.sha256).slice(0,16))+'…</code>, got <code>'+h.slice(0,16)+'…</code>. Even a one-character edit or a re-save changes this.'+(b.length!==p.file.size?' Size also differs: '+fmtSize(b.length)+' vs '+fmtSize(p.file.size)+' issued.':''));
+  if (t) add('provenance','pass','Issuer is on your trusted list','Saved as "'+esc(t.name)+'".');
+  else add('provenance','warn','Issuer key is not on your trusted list','Anyone can make a key and call themselves "'+esc(p.issuer)+'". Confirm the fingerprint with the issuer\'s website or office, then trust it.');
+  if (p.file.name !== file.name) add('provenance','info','File name differs from the issued name','Issued as "'+esc(p.file.name)+'". Renaming doesn\'t change the content, so this alone is fine.');
+  let verdict;
+  if (!sigOk || !hashOk) verdict={key:'bad',name:'Likely manipulated',why: !hashOk ? 'This is not the exact document the issuer signed.' : 'The proof itself has been tampered with.'};
+  else if (!t) verdict={key:'review',name:'Valid signature, unknown issuer',why:'The document matches its proof, but this browser doesn\'t yet know whether the key belongs to '+p.issuer+'.'};
+  else verdict={key:'verified',name:'Verified',why:'This is exactly the document '+p.issuer+' issued on '+String(p.issuedAt).slice(0,10)+'.'};
+  return {verdict, findings:F, fp, p, hash:h, size:b.length, untrusted: sigOk && !t};
+}
+let issueFile=null, verifyFile=null, verifySample=false;
+async function runVerify(sample){
+  const el=$('#report-verify');
+  if (!verifyFile || !$('#proof-in').value.trim()){ el.innerHTML='<div class="empty">Add both the document and its proof, then choose Verify.</div>'; return; }
+  loading(el);
+  const r = await verify(verifyFile, $('#proof-in').value);
+  if (r.error){ el.innerHTML='<div class="empty">'+esc(r.error)+'</div>'; return; }
+  renderReport(el, {sample, verdict:r.verdict, findings:r.findings, notChecked:['Whether the issuer\'s key was later revoked (needs the hosted registry, planned for the MVP).'],
+    facts:[['Credential', r.p.credentialId, true], ['Issuer (claimed)', r.p.issuer], ['Issued', String(r.p.issuedAt).replace('T',' ').replace('Z',' UTC')], ['Document', verifyFile.name+' · '+fmtSize(r.size)], ['SHA-256', groupHash(r.hash), true], ['Key fingerprint', r.fp, true]]});
+  if (r.untrusted){
+    const btn=document.createElement('button'); btn.type='button'; btn.textContent='Trust this issuer key'; btn.style.marginTop='10px';
+    btn.onclick=()=>{ trust(r.fp, r.p.issuer); runVerify(sample); };
+    el.querySelector('.verdict .vwhy').after(btn);
+  }
+}
+
+/* ---------- wiring ---------- */
+function dropZone(zone, input, onFile){
+  input.addEventListener('change', ()=>{ if(input.files[0]) onFile(input.files[0]); input.value=''; });
+  zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('over'); const f=e.dataTransfer.files[0]; if(f) onFile(f); });
+}
+dropZone($('#drop-check'), $('#file-check'), f=>checkFile(f,false));
+dropZone($('#drop-issue'), $('#file-issue'), f=>{ issueFile=f; $('#issue-chosen').textContent='Selected: '+f.name+' · '+fmtSize(f.size); });
+dropZone($('#drop-verify'), $('#file-verify'), f=>{ verifyFile=f; verifySample=false; $('#verify-chosen').textContent='Document: '+f.name+' · '+fmtSize(f.size); });
+$('#s-pdf').onclick = ()=>checkFile(samplePdf(), true);
+$('#s-png').onclick = async ()=>checkFile(await samplePng(), true);
+$('#s-docx').onclick = async ()=>{ if(!window.JSZip) return; checkFile(await sampleDocx(), true); };
+if (!window.JSZip){ $('#s-docx').disabled = true; $('#s-docx').title='The ZIP reader didn\'t load'; }
+$('#do-issue').onclick = async ()=>{
+  if (!issueFile){ $('#report-issue').innerHTML='<div class="empty">Choose the document to issue first.</div>'; return; }
+  const p = await issue(issueFile); renderIssued(p, await fingerprint(p.publicKey), false);
+};
+$('#new-key').onclick = async ()=>{ await loadKey(true); };
+$('#issuer-name').addEventListener('change', ()=>{ const fp=$('#my-fp').textContent; const t=trustedList.find(x=>x.fp===fp); if(t){ t.name=$('#issuer-name').value.trim()||t.name; store.set('ac.trusted',trustedList); renderTrusted(); } });
+$('#do-verify').onclick = ()=>runVerify(verifySample);
+async function loadVerifySample(altered){
+  const doc = sampleDiploma(); const p = await issue(doc);
+  let f = doc;
+  if (altered){ const b = new Uint8Array(await doc.arrayBuffer()); const s = latin1(b).replace('Data Analytics Program','Data Science MSc Program'); f = new File([strBytes(s)], doc.name, {type:'application/pdf'}); }
+  verifyFile=f; verifySample=true; $('#verify-chosen').textContent='Document: '+f.name+(altered?' (one line edited)':'')+' · '+fmtSize(f.size);
+  $('#proof-in').value = JSON.stringify(p,null,2);
+  runVerify(true);
+}
+$('#sv-good').onclick = ()=>loadVerifySample(false);
+$('#sv-bad').onclick = ()=>loadVerifySample(true);
+
+function route(){
+  const v = ['check','issue','verify'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'check';
+  document.querySelectorAll('.view').forEach(s=>s.hidden = s.dataset.for!==v);
+  document.querySelectorAll('nav.tabs a').forEach(a=>{ if(a.dataset.view===v) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+}
+window.addEventListener('hashchange', route); route();
+
+(async ()=>{
+  renderTrusted();
+  checkFile(samplePdf(), true);
+  try{
+    await loadKey();
+    issueFile = sampleDiploma(); $('#issue-chosen').textContent='Selected: '+issueFile.name+' (sample) · '+fmtSize(issueFile.size);
+    const p = await issue(issueFile); renderIssued(p, await fingerprint(p.publicKey), true);
+    await loadVerifySample(false);
+  }catch(e){ $('#my-fp').textContent='Signing isn\'t available in this browser.'; }
+})();
+})();
+</script>
+</body>
+</html>
